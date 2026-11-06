@@ -5,7 +5,9 @@ from typing import AsyncGenerator
 import uuid
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from sqlalchemy import text
 from backend.app.api.ai_settings import router as ai_settings_router
 from backend.app.api.analytics import router as analytics_router
@@ -108,3 +110,23 @@ async def readiness_check():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "unavailable", "database": "disconnected", "error": str(e)},
         )
+
+
+# Mount React Admin Frontend if dist exists
+_frontend_dist = Path("/app/frontend/dist")
+if not _frontend_dist.exists():
+    _frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+if _frontend_dist.exists() and (_frontend_dist / "index.html").is_file():
+    if (_frontend_dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_frontend_dist / "assets")), name="static_assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        # Exclude API endpoints, Swagger docs, and health checks
+        if full_path.startswith("api") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        target_file = _frontend_dist / full_path
+        if full_path and target_file.is_file():
+            return FileResponse(target_file)
+        return FileResponse(_frontend_dist / "index.html")
