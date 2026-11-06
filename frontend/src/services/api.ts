@@ -1,6 +1,8 @@
 const API_BASE = import.meta.env.VITE_API_URL 
   ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '')}/api` 
-  : '/api';
+  : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
+    ? '/api'
+    : 'https://nexus-backend-production-0e15.up.railway.app/api';
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('nexus_auth_token');
