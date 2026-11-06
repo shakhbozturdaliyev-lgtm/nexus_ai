@@ -343,7 +343,15 @@ async def seed_data() -> None:
             role="operator",
             is_active=True,
         )
-        session.add_all([admin_user, operator_user])
+        shakhboz_user = User(
+            business_id=business.id,
+            email="shakhbozturdaliyev@gmail.com",
+            password_hash=get_password_hash("OperatorPass123!"),
+            full_name="Shakhboz Turdaliyev",
+            role="operator",
+            is_active=True,
+        )
+        session.add_all([admin_user, operator_user, shakhboz_user])
 
         # 6. Default AI Settings
         ai_setting = AISetting(
