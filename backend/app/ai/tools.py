@@ -21,8 +21,11 @@ async def tool_search_products(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Search products and variants matching keyword query and filters."""
+    """Search products and variants matching keyword query and filters with relevance ranking."""
     clean_query = query.strip().lower()
+    # Normalize spaced model identifiers like "a 16" -> "a16", "s 23" -> "s23", "s 24" -> "s24"
+    normalized_query = re.sub(r"\b([a-z])\s+(\d+)\b", r"\1\2", clean_query)
+
     stmt = (
         select(Product)
         .where(
@@ -37,54 +40,120 @@ async def tool_search_products(
     products = res.scalars().all()
 
     matched = []
-    stopwords = {"bormi", "narxi", "qancha", "turadi", "va", "haqida", "mahsulot", "цена", "сколько", "стоит", "how", "much", "is"}
-    query_words = [w for w in re.findall(r"[a-zA-Z0-9]+", clean_query) if w not in stopwords]
+    stopwords = {
+        "bormi", "narxi", "qancha", "turadi", "va", "haqida", "mahsulot", "narsa",
+        "telefon", "smartfon", "цена", "сколько", "стоит", "товар", "how", "much",
+        "is", "the", "a", "an", "phone", "smartphone", "modeli", "model"
+    }
+    query_words = [w for w in re.findall(r"[a-zA-Z0-9]+", normalized_query) if w not in stopwords]
+
+    # Target model tokens
+    known_model_words = {
+        "s24", "s23", "s22", "s21", "a16", "a15", "a54", "a55", "ultra", "plus",
+        "pro", "max", "fe", "note", "16", "15", "14", "13", "12", "11",
+        "ideapad", "thinkpad", "macbook", "air", "redmi"
+    }
+    query_model_tokens = {
+        w for w in query_words
+        if w in known_model_words or re.match(r"^[a-z]\d+$", w)
+    }
+
+    # Capacity detection in query
+    requested_capacity = None
+    if re.search(r"\b(1\s*tb|1024\s*gb)\b", clean_query):
+        requested_capacity = "1 tb"
+    elif re.search(r"\b(512\s*gb)\b", clean_query):
+        requested_capacity = "512 gb"
+    elif re.search(r"\b(256\s*gb)\b", clean_query):
+        requested_capacity = "256 gb"
+    elif re.search(r"\b(128\s*gb)\b", clean_query):
+        requested_capacity = "128 gb"
+
+    scored_products = []
 
     for p in products:
-        p_name = p.name.lower()
-        p_brand = p.brand.lower()
-        p_tokens = set(re.findall(r"[a-zA-Z0-9]+", p_name)) | set(re.findall(r"[a-zA-Z0-9]+", p_brand))
+        p_name_lower = p.name.lower()
+        p_brand_lower = p.brand.lower()
+        p_norm_name = re.sub(r"\b([a-z])\s+(\d+)\b", r"\1\2", p_name_lower)
+        p_tokens = set(re.findall(r"[a-zA-Z0-9]+", p_norm_name)) | set(re.findall(r"[a-zA-Z0-9]+", p_brand_lower))
+        p_model_tokens = {
+            w for w in p_tokens
+            if w in known_model_words or re.match(r"^[a-z]\d+$", w)
+        }
 
-        # Check full containment or multi-token overlap
-        token_match = any(w in p_tokens for w in query_words if len(w) >= 3 or not w.isdigit())
+        score = 0
 
-        if (
-            clean_query in p_name
-            or p_name in clean_query
-            or clean_query in p_brand
-            or token_match
-        ):
-            # Fetch variants
-            v_res = await db.execute(
-                select(ProductVariant).where(ProductVariant.product_id == p.id)
+        # Exact / Substring matches
+        if clean_query in p_name_lower or p_name_lower in clean_query or normalized_query in p_norm_name:
+            score += 60
+
+        # Model token constraint
+        if query_model_tokens:
+            matched_models = query_model_tokens & p_tokens
+            if matched_models:
+                score += len(matched_models) * 40
+            elif p_model_tokens:
+                # User asked for specific models (e.g. S23 Ultra) but this product has a different model (e.g. A16)
+                score -= 100
+
+        # Brand match
+        if p_brand_lower in clean_query or any(w == p_brand_lower for w in query_words):
+            score += 20
+
+        # Token overlap
+        common_tokens = set(query_words) & p_tokens
+        score += len(common_tokens) * 5
+
+        if score <= 0:
+            continue
+
+        # Fetch variants
+        v_res = await db.execute(
+            select(ProductVariant).where(ProductVariant.product_id == p.id)
+        )
+        variants = v_res.scalars().all()
+
+        v_list = []
+        for v in variants:
+            if min_price and float(v.price) < min_price:
+                continue
+            if max_price and float(v.price) > max_price:
+                continue
+            v_list.append({
+                "variant_id": v.id,
+                "sku": v.sku,
+                "storage_capacity": v.storage_capacity,
+                "color": v.color,
+                "price_uzs": float(v.price),
+                "stock_quantity": v.stock_quantity,
+                "availability_status": v.availability_status,
+            })
+
+        # Sort variants so requested capacity is first
+        if requested_capacity and v_list:
+            req_clean = requested_capacity.replace(" ", "")
+            v_list.sort(
+                key=lambda x: (
+                    0 if req_clean in (x["storage_capacity"] or "").lower().replace(" ", "") else 1
+                )
             )
-            variants = v_res.scalars().all()
 
-            v_list = []
-            for v in variants:
-                if min_price and float(v.price) < min_price:
-                    continue
-                if max_price and float(v.price) > max_price:
-                    continue
-                v_list.append({
-                    "variant_id": v.id,
-                    "sku": v.sku,
-                    "storage_capacity": v.storage_capacity,
-                    "color": v.color,
-                    "price_uzs": float(v.price),
-                    "stock_quantity": v.stock_quantity,
-                    "availability_status": v.availability_status,
-                })
-
-            if v_list or (not min_price and not max_price):
-                matched.append({
+        if v_list or (not min_price and not max_price):
+            scored_products.append((
+                score,
+                {
                     "product_id": p.id,
                     "name": p.name,
                     "brand": p.brand,
                     "description": p.description,
                     "currency": p.currency,
                     "variants": v_list,
-                })
+                }
+            ))
+
+    # Sort matched products by score descending
+    scored_products.sort(key=lambda x: x[0], reverse=True)
+    matched = [sp[1] for sp in scored_products]
 
     return {
         "count": len(matched),

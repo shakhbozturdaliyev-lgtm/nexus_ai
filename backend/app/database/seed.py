@@ -74,7 +74,91 @@ async def seed_data() -> None:
         await session.flush()
 
         # 3. Products & Variants
-        # 3.1 Samsung Galaxy A16
+        # 3.1 Samsung Galaxy S23 Ultra
+        prod_s23_ultra = Product(
+            business_id=business.id,
+            category_id=cat_smartphones.id,
+            name="Samsung Galaxy S23 Ultra",
+            brand="Samsung",
+            description="6.8-inch Dynamic AMOLED 2X 120Hz display, Snapdragon 8 Gen 2, 200MP Quad Camera with 100x Space Zoom, S-Pen included, 5000mAh battery.",
+            currency="UZS",
+            active_status=True,
+        )
+        session.add(prod_s23_ultra)
+        await session.flush()
+
+        var_s23_1 = ProductVariant(
+            product_id=prod_s23_ultra.id,
+            sku="SAM-S23U-256-BLK",
+            storage_capacity="256 GB",
+            color="Phantom Black",
+            price=Decimal("13800000.00"),
+            stock_quantity=8,
+            availability_status="in_stock",
+        )
+        var_s23_2 = ProductVariant(
+            product_id=prod_s23_ultra.id,
+            sku="SAM-S23U-512-GRN",
+            storage_capacity="512 GB",
+            color="Green",
+            price=Decimal("15200000.00"),
+            stock_quantity=5,
+            availability_status="in_stock",
+        )
+        var_s23_3 = ProductVariant(
+            product_id=prod_s23_ultra.id,
+            sku="SAM-S23U-1TB-BLK",
+            storage_capacity="1 TB",
+            color="Phantom Black",
+            price=Decimal("17500000.00"),
+            stock_quantity=3,
+            availability_status="in_stock",
+        )
+        session.add_all([var_s23_1, var_s23_2, var_s23_3])
+
+        # 3.2 Samsung Galaxy S24 Ultra
+        prod_s24_ultra = Product(
+            business_id=business.id,
+            category_id=cat_smartphones.id,
+            name="Samsung Galaxy S24 Ultra",
+            brand="Samsung",
+            description="Galaxy AI, Titanium Frame, 6.8-inch Flat Dynamic AMOLED 2X 120Hz, Snapdragon 8 Gen 3 for Galaxy, 200MP Quad Camera, S-Pen.",
+            currency="UZS",
+            active_status=True,
+        )
+        session.add(prod_s24_ultra)
+        await session.flush()
+
+        var_s24_1 = ProductVariant(
+            product_id=prod_s24_ultra.id,
+            sku="SAM-S24U-256-GRY",
+            storage_capacity="256 GB",
+            color="Titanium Gray",
+            price=Decimal("15900000.00"),
+            stock_quantity=10,
+            availability_status="in_stock",
+        )
+        var_s24_2 = ProductVariant(
+            product_id=prod_s24_ultra.id,
+            sku="SAM-S24U-512-BLK",
+            storage_capacity="512 GB",
+            color="Titanium Black",
+            price=Decimal("17800000.00"),
+            stock_quantity=6,
+            availability_status="in_stock",
+        )
+        var_s24_3 = ProductVariant(
+            product_id=prod_s24_ultra.id,
+            sku="SAM-S24U-1TB-VIO",
+            storage_capacity="1 TB",
+            color="Titanium Violet",
+            price=Decimal("20400000.00"),
+            stock_quantity=2,
+            availability_status="in_stock",
+        )
+        session.add_all([var_s24_1, var_s24_2, var_s24_3])
+
+        # 3.3 Samsung Galaxy A16
         prod_samsung = Product(
             business_id=business.id,
             category_id=cat_smartphones.id,

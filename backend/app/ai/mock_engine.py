@@ -34,6 +34,69 @@ class MockAIEngine:
         clean_text = user_message.lower().strip()
         tool_calls = []
 
+        # 0. Intent: Polite Greetings & Pleasantries
+        greeting_words = {
+            "salom", "assalomu alaykum", "assalom", "qalesiz", "yaxshimisiz", "hayrli kun",
+            "hayrli tong", "hayrli kech", "privet", "привет", "здравствуйте", "здравствуй",
+            "добрый день", "доброе утро", "добрый вечер", "hello", "hi", "hey", "good morning", "good afternoon"
+        }
+        if clean_text in greeting_words or any(clean_text.startswith(gw) for gw in ["assalom", "salom", "здравств", "привет"]):
+            greeting_replies = {
+                "uz": (
+                    "Assalomu alaykum! Demo Electronics rasmiy do'konining intellektual yordamchisiga xush kelibsiz! 😊\n\n"
+                    "Bizda smartfonlar (Samsung, Apple iPhone, Xiaomi), noutbuklar va aksessuarlarning eng so'nggi modellari, "
+                    "rasmiy kafolat va Toshkent bo'ylab bepul tezkor yetkazib berish xizmati mavjud.\n\n"
+                    "Bugun sizga qaysi mahsulot yoki xizmatimiz bo'yicha ma'lumot berishim mumkin?"
+                ),
+                "ru": (
+                    "Здравствуйте! Добро пожаловать в службу заботы о клиентах Demo Electronics! 😊\n\n"
+                    "Мы рады предложить вам оригинальную технику Samsung, Apple, Xiaomi, ноутбуки Lenovo, "
+                    "официальную гарантию 1 год и бесплатную доставку по Ташкенту.\n\n"
+                    "Какая модель или вопрос вас интересует сегодня?"
+                ),
+                "en": (
+                    "Hello! Welcome to Demo Electronics intelligent customer support! 😊\n\n"
+                    "We are happy to assist you with the latest smartphones (Samsung, Apple iPhone, Xiaomi), laptops, "
+                    "official 1-year warranties, and fast free delivery across Tashkent.\n\n"
+                    "How may I assist you with our catalog or services today?"
+                ),
+            }
+            return AIResponse(
+                text=greeting_replies.get(lang, greeting_replies["uz"]),
+                tool_calls_made=[],
+                escalated_to_human=False,
+                language_used=lang,
+                tokens_used=50,
+            )
+
+        # 0.5 Intent: Gratitude & Polite Closing
+        thanks_words = {"rahmat", "katta rahmat", "spasibo", "спасибо", "благодарю", "thanks", "thank you"}
+        if any(tw in clean_text for tw in thanks_words):
+            thanks_replies = {
+                "uz": (
+                    "Arzimaydi! Sizga xizmat ko'rsatishdan mamnunmiz. 😊\n"
+                    "Agar yana biron bir savolingiz bo'lsa yoki yangi buyurtma bermoqchi bo'lsangiz, doimo yordamga tayyorman. "
+                    "Kuningiz xayrli va barakali o'tsin!"
+                ),
+                "ru": (
+                    "Пожалуйста! Всегда рады помочь вам. 😊\n"
+                    "Если возникнут еще вопросы или захотите оформить заказ, обращайтесь в любое время. "
+                    "Желаем отличного настроения и приятных покупок!"
+                ),
+                "en": (
+                    "You are very welcome! It is a pleasure to assist you. 😊\n"
+                    "Feel free to reach out anytime if you need more details or wish to place an order. "
+                    "Have a wonderful day!"
+                ),
+            }
+            return AIResponse(
+                text=thanks_replies.get(lang, thanks_replies["uz"]),
+                tool_calls_made=[],
+                escalated_to_human=False,
+                language_used=lang,
+                tokens_used=40,
+            )
+
         # 1. Intent: Human Operator Request
         if any(w in clean_text for w in ["operator", "inson", "menejer", "mutaxassis", "оператор", "человек", "менеджер", "human", "agent", "support"]):
             # Trigger ticket creation
@@ -185,16 +248,73 @@ class MockAIEngine:
         products = search_res.get("products", [])
         if products:
             p = products[0]
-            lines = [f"📱 *{p['name']}* ({p['brand']})\n{p.get('description', '')}\n"]
             variants = p.get("variants", [])
-            if variants:
-                lines.append("*Mavjud modellar va narxlar:*" if lang == "uz" else "*Доступные варианты и цены:*")
-                for v in variants:
-                    price_formatted = f"{v['price_uzs']:,.0f}".replace(",", " ")
-                    stock_txt = "Mavjud" if v["stock_quantity"] > 0 else "Qolmagan"
-                    lines.append(f"• {v['storage_capacity'] or ''} {v['color'] or ''} ({v['sku']}): *{price_formatted} UZS* ({stock_txt})")
+            lines = []
+
+            # Courteous, respectful human-like opening
+            if lang == "uz":
+                lines.append(f"Assalomu alaykum! Hurmatli mijoz, siz so'ragan *{p['name']}* bo'yicha ma'lumotlar bilan bajonidil tanishtiraman:\n")
+                lines.append(f"📱 *{p['name']}* ({p['brand']})")
+                if p.get('description'):
+                    lines.append(f"_{p['description']}_\n")
+                if variants:
+                    lines.append("💰 *Mavjud modellar va narxlar:*")
+                    for v in variants:
+                        price_formatted = f"{v['price_uzs']:,.0f}".replace(",", " ")
+                        stock_txt = "✅ Omborda mavjud" if v["stock_quantity"] > 0 else "⏳ Hozirda qolmagan"
+                        lines.append(f"• *{v['storage_capacity'] or ''}* {v['color'] or ''} ({v['sku']}): *{price_formatted} UZS* ({stock_txt})")
+                else:
+                    lines.append("Ushbu mahsulot narxi hozirda tasdiqlanmagan.")
+
+                lines.append(
+                    "\n✨ *Demo Electronics afzalliklari:*\n"
+                    "🛡 1 yillik rasmiy kafolat\n"
+                    "🚚 Toshkent bo'ylab 24 soat ichida bepul yetkazib berish\n"
+                    "💳 Click, Payme yoki muddatli to'lov (bo'lib to'lash)\n\n"
+                    "Ushbu modelni buyurtma qilishni xohlaysizmi yoki operatorimiz yordami kerakmi? Sizga xizmat qilishdan xursandman! 😊"
+                )
+            elif lang == "ru":
+                lines.append(f"Здравствуйте! Уважаемый клиент, с удовольствием предоставлю информацию по интересующей вас модели *{p['name']}*:\n")
+                lines.append(f"📱 *{p['name']}* ({p['brand']})")
+                if p.get('description'):
+                    lines.append(f"_{p['description']}_\n")
+                if variants:
+                    lines.append("💰 *Доступные комплектации и цены:*")
+                    for v in variants:
+                        price_formatted = f"{v['price_uzs']:,.0f}".replace(",", " ")
+                        stock_txt = "✅ В наличии" if v["stock_quantity"] > 0 else "⏳ Нет в наличии"
+                        lines.append(f"• *{v['storage_capacity'] or ''}* {v['color'] or ''} ({v['sku']}): *{price_formatted} UZS* ({stock_txt})")
+                else:
+                    lines.append("Цена на данный товар не подтверждена.")
+
+                lines.append(
+                    "\n✨ *Преимущества покупки в Demo Electronics:*\n"
+                    "🛡 Официальная сервисная гарантия 1 год\n"
+                    "🚚 Быстрая бесплатная доставка по Ташкенту\n"
+                    "💳 Оплата картой, наличными или в рассрочку\n\n"
+                    "Хотите оформить заказ или связаться с нашим оператором? Буду рад помочь вам! 😊"
+                )
             else:
-                lines.append("Ushbu mahsulot narxi hozirda tasdiqlanmagan." if lang == "uz" else "Цена на данный товар не подтверждена.")
+                lines.append(f"Hello! Dear customer, I would be delighted to provide details regarding the *{p['name']}*:\n")
+                lines.append(f"📱 *{p['name']}* ({p['brand']})")
+                if p.get('description'):
+                    lines.append(f"_{p['description']}_\n")
+                if variants:
+                    lines.append("💰 *Available Configurations & Verified Prices:*")
+                    for v in variants:
+                        price_formatted = f"{v['price_uzs']:,.0f}".replace(",", " ")
+                        stock_txt = "✅ In Stock" if v["stock_quantity"] > 0 else "⏳ Out of Stock"
+                        lines.append(f"• *{v['storage_capacity'] or ''}* {v['color'] or ''} ({v['sku']}): *{price_formatted} UZS* ({stock_txt})")
+                else:
+                    lines.append("Verified pricing is currently unavailable for this item.")
+
+                lines.append(
+                    "\n✨ *Demo Electronics Store Advantages:*\n"
+                    "🛡 1-year official manufacturer warranty\n"
+                    "🚚 Free express delivery within 24 hours across Tashkent\n"
+                    "💳 Credit cards, bank transfers, and installment options accepted\n\n"
+                    "Would you like to place an order or connect with our customer support operator? Happy to assist! 😊"
+                )
 
             return AIResponse(
                 text="\n".join(lines),
@@ -207,16 +327,19 @@ class MockAIEngine:
         # 7. Unverified / Unknown Product or Question
         unconfirmed_replies = {
             "uz": (
-                f"Kechirasiz, \"{user_message}\" bo'yicha ma'lumotlar bazamizda tasdiqlangan narx yoki mahsulot topilmadi. "
-                "Sizni yordam berishi uchun do'kon operatorimiz bilan bog'lashimizni xohlaysizmi?"
+                f"Assalomu alaykum! Hurmatli mijoz, afsuski, «*{user_message}*» bo'yicha ma'lumotlar bazamizda tasdiqlangan narx yoki mahsulot topilmadi.\n\n"
+                "Do'konimizda boshqa ommabop flagman modellar (Samsung Galaxy, Apple iPhone, Xiaomi) rasmiy kafolat bilan mavjud.\n"
+                "Sizga kerakli mahsulotni aniqlash yoki buyurtma asosida olib kelish uchun do'kon operatorimiz bilan bog'lashimizni xohlaysizmi?"
             ),
             "ru": (
-                f"К сожалению, по запросу «{user_message}» в каталоге не найдено подтвержденных товаров или цен. "
-                "Хотите, я переведу диалог на оператора поддержки?"
+                f"Здравствуйте! Уважаемый клиент, к сожалению, по вашему запросу «*{user_message}*» в нашем каталоге не найдено подтвержденных товаров или цен.\n\n"
+                "В нашем магазине доступны другие популярные флагманские модели Samsung, Apple iPhone и Xiaomi с официальной гарантией.\n"
+                "Желаете, я переведу диалог на оператора поддержки, чтобы мы помогли подобрать товар или оформить индивидуальный заказ?"
             ),
             "en": (
-                f"I could not find verified pricing or product details for \"{user_message}\". "
-                "Would you like me to connect you with a customer support representative?"
+                f"Hello! Dear customer, I could not find verified pricing or product details for \"*{user_message}*\" in our active catalog.\n\n"
+                "We do carry popular flagship models from Samsung, Apple iPhone, and Xiaomi with official 1-year warranties.\n"
+                "Would you like me to connect you with our customer support operator to assist you further?"
             ),
         }
         return AIResponse(
