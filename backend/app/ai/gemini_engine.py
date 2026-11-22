@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.ai.schemas import AIResponse
 from backend.app.ai.tools import (
     tool_check_inventory,
+    tool_create_order,
     tool_create_support_ticket,
     tool_get_business_hours,
     tool_get_delivery_policy,
@@ -62,6 +63,7 @@ class GeminiAIEngine:
         tool_declarations = [
             tool_search_products,
             tool_check_inventory,
+            tool_create_order,
             tool_get_business_hours,
             tool_get_delivery_policy,
             tool_get_return_policy,

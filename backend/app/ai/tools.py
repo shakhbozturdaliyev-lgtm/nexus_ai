@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.logging import logger
 from backend.app.models.business import Business
 from backend.app.models.knowledge import KnowledgeArticle
-from backend.app.models.order import Order, OrderItem
+from backend.app.models.order import Order, OrderItem, OrderStatusHistory
 from backend.app.models.product import Product, ProductVariant
 from backend.app.models.ticket import SupportTicket
 
@@ -367,4 +367,111 @@ async def tool_create_support_ticket(
         "priority": ticket.priority,
         "status": ticket.status,
         "message": "Support ticket created successfully.",
+    }
+
+
+async def tool_create_order(
+    db: AsyncSession,
+    business_id: int,
+    customer_id: int,
+    shipping_address: str,
+    recipient_phone: str,
+    product_variant_id: Optional[int] = None,
+    product_id: Optional[int] = None,
+    quantity: int = 1,
+    notes: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create and persist a new customer sales order with items and initial status history."""
+    import random
+    import time
+
+    variant = None
+    if product_variant_id:
+        v_res = await db.execute(
+            select(ProductVariant).where(ProductVariant.id == product_variant_id)
+        )
+        variant = v_res.scalar_one_or_none()
+    elif product_id:
+        v_res = await db.execute(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == product_id)
+            .order_by(ProductVariant.price.asc())
+        )
+        variant = v_res.scalars().first()
+
+    if not variant:
+        stmt = (
+            select(ProductVariant)
+            .join(Product)
+            .where(Product.business_id == business_id, Product.active_status.is_(True))
+            .limit(1)
+        )
+        res = await db.execute(stmt)
+        variant = res.scalar_one_or_none()
+
+    if not variant:
+        return {"error": "No available product variants found to place order."}
+
+    p_res = await db.execute(select(Product).where(Product.id == variant.product_id))
+    product = p_res.scalar_one()
+
+    unit_price = Decimal(str(variant.price))
+    total_amount = unit_price * Decimal(quantity)
+
+    rand_code = random.randint(1000, 9999)
+    timestamp_part = int(time.time()) % 10000
+    order_number = f"ORD-{timestamp_part:04d}-{rand_code}"
+
+    order = Order(
+        business_id=business_id,
+        customer_id=customer_id,
+        order_number=order_number,
+        status="pending",
+        total_amount=total_amount,
+        currency=product.currency or "UZS",
+        shipping_address=shipping_address,
+        recipient_phone=recipient_phone,
+    )
+    db.add(order)
+    await db.flush()
+
+    item = OrderItem(
+        order_id=order.id,
+        product_variant_id=variant.id,
+        quantity=quantity,
+        unit_price=unit_price,
+        total_price=total_amount,
+    )
+    db.add(item)
+
+    status_entry = OrderStatusHistory(
+        order_id=order.id,
+        status="pending",
+        notes=f"Order placed via Telegram Bot. {notes or ''}".strip(),
+    )
+    db.add(status_entry)
+
+    if variant.stock_quantity >= quantity:
+        variant.stock_quantity -= quantity
+        if variant.stock_quantity == 0:
+            variant.availability_status = "out_of_stock"
+
+    await db.flush()
+    logger.info(
+        f"Order #{order_number} successfully placed for customer ID {customer_id}, total={total_amount} UZS"
+    )
+
+    return {
+        "order_id": order.id,
+        "order_number": order.order_number,
+        "status": order.status,
+        "product_name": product.name,
+        "variant_details": f"{variant.storage_capacity or ''} {variant.color or ''}".strip(),
+        "sku": variant.sku,
+        "quantity": quantity,
+        "unit_price_uzs": float(unit_price),
+        "total_amount_uzs": float(total_amount),
+        "currency": order.currency,
+        "shipping_address": shipping_address,
+        "recipient_phone": recipient_phone,
     }
