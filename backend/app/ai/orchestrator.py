@@ -1,6 +1,7 @@
 """AI Orchestration Facade: coordinates defenses, engines, guardrails, and tools."""
 
 from typing import Any, Dict, List, Optional
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.ai.defense import check_prompt_injection, redact_secrets, sanitize_input
 from backend.app.ai.gemini_engine import GeminiAIEngine
@@ -10,6 +11,7 @@ from backend.app.ai.schemas import AIResponse
 from backend.app.bot.session import get_conversation_history, save_message
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
+from backend.app.models.ai_setting import AISetting
 
 
 class AIOrchestrator:
@@ -82,6 +84,26 @@ class AIOrchestrator:
 
         # 4. Engine execution with graceful fallback
         ai_response: Optional[AIResponse] = None
+
+        # Dynamically initialize Gemini engine if API key was recently set
+        if not self.gemini_engine and settings.gemini_api_key and not settings.ai_mock_mode:
+            try:
+                self.gemini_engine = GeminiAIEngine()
+            except Exception as e:
+                logger.warning(f"Could not lazily initialize Gemini engine: {e}")
+
+        # Fetch custom system instructions from database if configured
+        sys_instructions = None
+        try:
+            ai_setting_res = await db.execute(
+                select(AISetting).where(AISetting.business_id == business_id)
+            )
+            ai_setting = ai_setting_res.scalar_one_or_none()
+            if ai_setting and ai_setting.system_instructions:
+                sys_instructions = ai_setting.system_instructions
+        except Exception as e:
+            logger.debug(f"Could not load AISetting: {e}")
+
         if self.gemini_engine and not settings.ai_mock_mode:
             try:
                 ai_response = await self.gemini_engine.generate_response(
@@ -92,6 +114,7 @@ class AIOrchestrator:
                     user_message=cleaned_input,
                     lang=lang,
                     history=formatted_history,
+                    system_instructions=sys_instructions,
                 )
             except Exception as e:
                 logger.error(f"Gemini execution error, falling back to mock engine: {e}")

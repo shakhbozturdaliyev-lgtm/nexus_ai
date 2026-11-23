@@ -40,9 +40,23 @@ class HallucinationGuardrail:
                     verified_prices.add(int(price))
                     has_products = True
 
+            # Also check orders and order status results
+            if "total_amount_uzs" in tr and tr["total_amount_uzs"] is not None:
+                verified_prices.add(int(tr["total_amount_uzs"]))
+            if "unit_price_uzs" in tr and tr["unit_price_uzs"] is not None:
+                verified_prices.add(int(tr["unit_price_uzs"]))
+
+        # Mask out phone numbers and order numbers before checking for prices
+        sanitized_text = re.sub(r"\+?998[\s-]?\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}", " ", response_text)
+        sanitized_text = re.sub(r"\bORD-[A-Za-z0-9-]+\b", " ", sanitized_text)
+        sanitized_text = re.sub(r"\b\d{9,12}\b", " ", sanitized_text)  # Mask phone numbers
+
         # Extract large numeric values that look like UZS prices (e.g. 2 450 000, 2450000, 12,800,000)
-        # Match sequences of numbers >= 5 digits (since lowest phone/item in UZS is >= 10,000)
-        raw_numbers = re.findall(r"\b\d{1,3}(?:[ ,.]\d{3})+(?:\s*(?:so'm|som|сум|uzs))?\b|\b\d{5,9}\b", response_text, re.IGNORECASE)
+        raw_numbers = re.findall(
+            r"\b\d{1,3}(?:[ ,.]\d{3})+(?:\s*(?:so'm|som|сум|uzs))?\b|\b\d{6,9}\s*(?:so'm|som|сум|uzs)\b",
+            sanitized_text,
+            re.IGNORECASE,
+        )
 
         unverified_found = False
         for num_str in raw_numbers:
