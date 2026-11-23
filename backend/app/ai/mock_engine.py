@@ -136,17 +136,38 @@ class MockAIEngine:
             )
 
         # 2. Intent: Order Placement / Direct Purchase Workflow (NEW)
-        # Check if customer expresses intent to order OR supplies phone/address to complete an order
+        # Check if customer expresses intent to order OR supplies phone/address OR confirms order
         order_intent_keywords = [
             "buyurtma ber", "buyurtma qil", "sotib ol", "zakaz ber", "zakaz qil", "xarid qil",
-            "olmoqchiman", "olmoqchiman", "zakaz qilmoqchi", "buyurtma qilmoqchi", "buyurtma bermoqchi",
+            "olmoqchiman", "zakaz qilmoqchi", "buyurtma qilmoqchi", "buyurtma bermoqchi",
             "order now", "place order", "i want to buy", "purchase",
             "купить", "заказать", "оформить заказ", "хочу заказать", "хочу купить"
         ]
         has_order_intent = any(k in clean_text for k in order_intent_keywords)
         phone_match = re.search(r"(\+?998\s?[0-9]{2}\s?[0-9]{3}\s?[0-9]{2}\s?[0-9]{2}|[0-9]{9,12})", user_message)
 
-        if has_order_intent or phone_match:
+        # Check for order confirmation phrases like "tasdiqlayman", "ha, tasdiqlayman", "xa", "ok"
+        is_confirmation = any(
+            ck in clean_text for ck in [
+                "tasdiqlayman", "tasdiqlash", "rasmiylashtiring", "buyurtmani rasmiylashtiring",
+                "подтверждаю", "да, подтверждаю", "confirm", "yes, confirm", "оформить"
+            ]
+        ) or (clean_text in ["ha", "xa", "да", "yes", "ok", "ha albatta", "albatta"] and history)
+
+        extracted_prev_address = None
+        if is_confirmation and not phone_match and history:
+            for turn in reversed(history):
+                prev_text = turn.get("content", "")
+                m = re.search(r"(\+?998\s?[0-9]{2}\s?[0-9]{3}\s?[0-9]{2}\s?[0-9]{2}|[0-9]{9,12})", prev_text)
+                if m:
+                    phone_match = m
+                    clean_prev = prev_text.lower().replace(m.group(0).lower(), "")
+                    for marker in ["manzil:", "manzil", "adres:", "адрес:", "telefon:", "toshkent", "buyurtma", "bermoqchiman"]:
+                        clean_prev = clean_prev.replace(marker, "")
+                    extracted_prev_address = clean_prev.strip(",. ")
+                    break
+
+        if has_order_intent or phone_match or is_confirmation:
             # Check if this turn is purely looking up an existing order number like ORD-1001
             is_lookup_query = bool(re.search(r"\bORD-\d+\b", user_message, re.IGNORECASE)) or any(
                 w in clean_text for w in ["status", "holati", "qayerda qoldi", "buyurtmam holati", "статус"]
@@ -195,7 +216,7 @@ class MockAIEngine:
                     address_part = clean_text.replace(phone_match.group(0).lower(), "")
                     for marker in ["manzil:", "manzil", "adres:", "адрес:", "toshkent", "tashkent", "buyurtma", "bermoqchiman", "iltimos", "shahar", "tumani"]:
                         address_part = address_part.replace(marker, "")
-                    address = address_part.strip(",. ") or "Toshkent shahri (kuryer qo'ng'iroq qilib aniqlaydi)"
+                    address = address_part.strip(",. ") or extracted_prev_address or "Toshkent shahri (kuryer qo'ng'iroq qilib aniqlaydi)"
 
                     v_id = target_variant.get("variant_id") if target_variant else None
                     order_res = await tool_create_order(

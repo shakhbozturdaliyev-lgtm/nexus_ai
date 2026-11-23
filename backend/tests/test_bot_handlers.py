@@ -88,5 +88,5 @@ async def test_text_product_inquiry(mock_update, db_session):
     reply = mock_update.message.reply_text.call_args[0][0]
     # Must report verified database price
     assert "Samsung Galaxy A16" in reply
-    assert "2 450 000" in reply or "2450000" in reply
+    assert "2 450 000" in reply or "2450000" in reply or "2,450,000" in reply
     assert "UZS" in reply

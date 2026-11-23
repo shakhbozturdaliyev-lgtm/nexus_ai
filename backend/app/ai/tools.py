@@ -376,6 +376,7 @@ async def tool_create_order(
     customer_id: int,
     shipping_address: str,
     recipient_phone: str,
+    product_name: Optional[str] = None,
     product_variant_id: Optional[int] = None,
     product_id: Optional[int] = None,
     quantity: int = 1,
@@ -398,6 +399,14 @@ async def tool_create_order(
             .order_by(ProductVariant.price.asc())
         )
         variant = v_res.scalars().first()
+    elif product_name:
+        search_res = await tool_search_products(db=db, business_id=business_id, query=product_name)
+        if search_res.get("products"):
+            first_prod = search_res["products"][0]
+            if first_prod.get("variants"):
+                v_id = first_prod["variants"][0]["variant_id"]
+                v_res = await db.execute(select(ProductVariant).where(ProductVariant.id == v_id))
+                variant = v_res.scalar_one_or_none()
 
     if not variant:
         stmt = (

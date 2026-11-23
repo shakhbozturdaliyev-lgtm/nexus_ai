@@ -116,7 +116,7 @@ Tashkent express delivery within 24 hours. Free delivery for orders over 500,000
 1-year official manufacturer warranty. Assist with defective products, warranty claims, and return requests.
 
 13. HUMAN ESCALATION
-Transfer conversation using create_support_ticket when customer asks for a human operator, compatibility cannot be verified, or an unresolved complaint occurs.
+Whenever a customer asks for a human, operator, live person, or manager (e.g. 'operator', 'jonli inson', 'operator bilan gaplashmoqchiman', 'человек', 'оператор'), or if compatibility cannot be verified or an unresolved complaint occurs, you MUST IMMEDIATELY call `create_support_ticket(category='general', message='Customer requested human operator')` to transfer the conversation right away. Do not delay by asking extra questions first.
 
 14. SECURITY AND PRIVACY
 Never disclose API keys, database credentials, or other customers' data.
@@ -125,6 +125,116 @@ Never disclose API keys, database credentials, or other customers' data.
 You are not merely a chatbot. You are Demo Electronics' intelligent customer service, sales assistance, and operational support system.
 Be proactive without being intrusive. Be persuasive without being manipulative. Always prioritize trustworthy service and long-term customer satisfaction.
 """
+
+
+GEMINI_FUNCTION_DECLARATIONS = [
+    types.FunctionDeclaration(
+        name="search_products",
+        description="Search electronics, smartphones, laptops, and accessories in the Demo Electronics catalog",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "query": types.Schema(
+                    type=types.Type.STRING,
+                    description="Product name, brand, or model keywords, e.g. 'Samsung S23 Ultra 1 TB', 'iPhone 16', 'Lenovo IdeaPad'",
+                )
+            },
+            required=["query"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="check_inventory",
+        description="Check real-time stock levels, available colors, and storage capacities for a product",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "product_id": types.Schema(type=types.Type.INTEGER, description="Database Product ID"),
+                "variant_id": types.Schema(type=types.Type.INTEGER, description="Optional Variant ID"),
+            },
+            required=["product_id"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="create_order",
+        description="Create and submit a customer order directly in the database. Call when customer confirms their order with their contact phone and delivery address. You can pass product_name (e.g. 'Samsung S23 Ultra'), product_id, or product_variant_id.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "shipping_address": types.Schema(
+                    type=types.Type.STRING,
+                    description="Customer delivery address in Uzbekistan, e.g. Tashkent, Yunusabad 4, house 10",
+                ),
+                "recipient_phone": types.Schema(
+                    type=types.Type.STRING,
+                    description="Customer contact phone number, e.g. +998901234567",
+                ),
+                "product_name": types.Schema(
+                    type=types.Type.STRING,
+                    description="Product name or keywords, e.g. 'Samsung S23 Ultra 1 TB'",
+                ),
+                "product_id": types.Schema(type=types.Type.INTEGER, description="Optional Product ID to purchase"),
+                "product_variant_id": types.Schema(type=types.Type.INTEGER, description="Optional Product variant ID"),
+                "quantity": types.Schema(type=types.Type.INTEGER, description="Quantity to purchase (default 1)"),
+                "notes": types.Schema(type=types.Type.STRING, description="Optional delivery notes or customer requests"),
+            },
+            required=["shipping_address", "recipient_phone"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_order_status",
+        description="Look up current fulfillment status, items, and total for an existing order by order number",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "order_number": types.Schema(type=types.Type.STRING, description="Order number, e.g. ORD-1001 or ORD-2026-XXXX")
+            },
+            required=["order_number"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="create_support_ticket",
+        description="Escalate conversation to a human support operator or create a customer complaint/warranty ticket. Call this tool immediately when a customer asks to speak with an operator, human, manager, or living agent.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "category": types.Schema(type=types.Type.STRING, description="Category: 'general', 'complaint', or 'return'"),
+                "message": types.Schema(type=types.Type.STRING, description="Summary of customer issue or escalation reason, e.g. 'Customer requested human operator'"),
+            },
+            required=["message"],
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_delivery_policy",
+        description="Get official delivery rates, timelines, and thresholds across Tashkent and Uzbekistan regions",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "region": types.Schema(type=types.Type.STRING, description="Optional region name, e.g. Tashkent")
+            },
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="get_return_policy",
+        description="Get official warranty, return, and exchange terms",
+        parameters=types.Schema(type=types.Type.OBJECT),
+    ),
+    types.FunctionDeclaration(
+        name="get_business_hours",
+        description="Get official showroom operating hours, phone, telegram, and showroom address",
+        parameters=types.Schema(type=types.Type.OBJECT),
+    ),
+    types.FunctionDeclaration(
+        name="get_faq_answer",
+        description="Look up answers to frequently asked technical questions in store knowledge base",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "question": types.Schema(type=types.Type.STRING, description="Customer question")
+            },
+            required=["question"],
+        ),
+    ),
+]
 
 
 class GeminiAIEngine:
@@ -153,23 +263,11 @@ class GeminiAIEngine:
         # System prompt setting up behavior and facts boundary
         sys_prompt = system_instructions or MASTER_SYSTEM_INSTRUCTIONS
 
-        tool_declarations = [
-            tool_search_products,
-            tool_check_inventory,
-            tool_create_order,
-            tool_get_order_status,
-            tool_create_support_ticket,
-            tool_get_business_hours,
-            tool_get_delivery_policy,
-            tool_get_return_policy,
-            tool_get_faq_answer,
-        ]
-
         config = types.GenerateContentConfig(
             system_instruction=sys_prompt,
             temperature=0.2,
             max_output_tokens=settings.max_output_tokens,
-            tools=tool_declarations,
+            tools=[types.Tool(function_declarations=GEMINI_FUNCTION_DECLARATIONS)],
         )
 
         # Build conversation contents
@@ -210,6 +308,8 @@ class GeminiAIEngine:
                     args=fn_args,
                 )
                 tool_calls_made.append({"tool": fn_name, "result": tool_result})
+                if fn_name in ("create_support_ticket", "tool_create_support_ticket"):
+                    escalated = True
 
                 # Send function response back to Gemini
                 contents.append(response.candidates[0].content)
@@ -277,6 +377,7 @@ class GeminiAIEngine:
                 customer_id=customer_id,
                 shipping_address=args.get("shipping_address", ""),
                 recipient_phone=args.get("recipient_phone", ""),
+                product_name=args.get("product_name"),
                 product_variant_id=args.get("product_variant_id"),
                 product_id=args.get("product_id"),
                 quantity=args.get("quantity", 1),
